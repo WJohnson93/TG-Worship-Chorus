@@ -16,8 +16,8 @@
         button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 15px; margin-bottom: 5px; }
         .btn-play { background: #2ecc71; color: white; }
         .btn-pause { background: #e74c3c; color: white; }
-        button:hover { opacity: 0.9; }
-        .hidden-elements { display: none; }
+        button:disabled { background: #bdc3c7 !important; color: #7f8c8d; cursor: not-allowed; }
+        button:hover:not(:disabled) { opacity: 0.9; }
     </style>
 </head>
 <body>
@@ -43,78 +43,133 @@
     </div>
 
     <div class="master-controls">
-        <button id="mainBtn" class="btn-play" onclick="playAll()">Sync & Play All</button>
-        <button id="pauseBtn" class="btn-pause" onclick="pauseAll()">Pause All</button>
+        <button id="mainBtn" class="btn-play" disabled>Preparing Mixer (0/4)...</button>
+        <button id="pauseBtn" class="btn-pause" onclick="togglePause()" disabled>Pause</button>
     </div>
 </div>
 
-<div class="hidden-elements">
-    <audio id="audio-melody" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-h1" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-h2" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-piano" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3" loop crossorigin="anonymous" playsinline></audio>
-</div>
-
 <script>
-    let audioCtx = null;
-    let initialized = false;
-
-    // Structure data models mapped directly to DOM elements
-    const tracks = [
-        { el: document.getElementById('audio-melody'), slider: document.getElementById('vol-melody'), disp: document.getElementById('v1') },
-        { el: document.getElementById('audio-h1'), slider: document.getElementById('vol-h1'), disp: document.getElementById('v2') },
-        { el: document.getElementById('audio-h2'), slider: document.getElementById('vol-h2'), disp: document.getElementById('v3') },
-        { el: document.getElementById('audio-piano'), slider: document.getElementById('vol-piano'), disp: document.getElementById('v4') }
+    const trackConfigs = [
+        { name: 'melody', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3', slider: 'vol-melody', disp: 'v1' },
+        { name: 'h1', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3', slider: 'vol-h1', disp: 'v2' },
+        { name: 'h2', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3', slider: 'vol-h2', disp: 'v3' },
+        { name: 'piano', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3', slider: 'vol-piano', disp: 'v4' }
     ];
 
-    function initAudioEngine() {
-        if (initialized) return;
+    let audioCtx = null;
+    let tracks = [];
+    let isPlaying = false;
+    let startTime = 0;
+    let pausedAt = 0;
+    let loadedCount = 0;
 
-        // Establish hardware audio routing clock
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const mainBtn = document.getElementById('mainBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
 
-        tracks.forEach(t => {
-            // Hook standard HTML audio objects into Web Audio node pipeline context maps
-            const source = audioCtx.createMediaElementSource(t.el);
-            const gainNode = audioCtx.createGain();
-
-            // Link node logic maps: Source -> Volume Slider Modifier -> Device Output Speakers
-            source.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            // Establish current runtime volumes
-            gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
-
-            // Bind individual reactive track controls
-            t.slider.addEventListener('input', () => {
-                gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
-                t.disp.innerText = Math.round(t.slider.value * 100) + '%';
-            });
-        });
-
-        initialized = true;
+    // Bypasses CORS constraints on mobile by downloading assets via alternative channel gateways
+    async function fetchAudioBlobData(url) {
+        // Appending a standard proxy gateway allows mobile scripts to ingest cross-origin assets securely
+        const bypassUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        const response = await fetch(bypassUrl);
+        if (!response.ok) throw new Error('Network failure');
+        return await response.arrayBuffer();
     }
 
-    function playAll() {
-        // Build engine immediately upon detecting first valid user physical gesture input tracking event
-        initAudioEngine();
+    async function loadEngineAssets() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        for (let config of trackConfigs) {
+            try {
+                const arrayBuffer = await fetchAudioBlobData(config.url);
+                
+                // Decode array layout parameters seamlessly matching system sound profiles
+                const audioBuffer = await new Promise((resolve, reject) => {
+                    audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+                });
 
-        if (audioCtx && audioCtx.state === 'suspended') {
+                const gainNode = audioCtx.createGain();
+                gainNode.connect(audioCtx.destination);
+
+                const sliderEl = document.getElementById(config.slider);
+                const dispEl = document.getElementById(config.disp);
+                gainNode.gain.setValueAtTime(sliderEl.value, audioCtx.currentTime);
+
+                sliderEl.oninput = () => {
+                    gainNode.gain.setValueAtTime(sliderEl.value, audioCtx.currentTime);
+                    dispEl.innerText = Math.round(sliderEl.value * 100) + '%';
+                };
+
+                tracks.push({ buffer: audioBuffer, gainNode: gainNode, activeSource: null });
+                loadedCount++;
+                mainBtn.innerText = `Preparing Mixer (${loadedCount}/4)...`;
+            } catch (err) {
+                console.error("Asset download interrupted: ", err);
+                mainBtn.innerText = "Error Syncing Tracks";
+                return;
+            }
+        }
+
+        // Activate UI triggers once processing pipelines are secure
+        mainBtn.innerText = "Sync & Play All";
+        mainBtn.disabled = false;
+        mainBtn.onclick = executePerfectPlayback;
+    }
+
+    function executePerfectPlayback() {
+        if (audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
 
-        // Force snap all underlying hardware playback positions to sync points instantly
+        haltAllActiveThreads();
+
+        // Pinpoint target timestamp using systems' underlying hardware reference clock
+        startTime = audioCtx.currentTime - pausedAt;
+
         tracks.forEach(t => {
-            t.el.currentTime = 0;
-            t.el.play().catch(err => console.log("Mobile engagement required: ", err));
+            const sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = t.buffer;
+            sourceNode.loop = true; // Hardware looping prevents drift gaps cleanly
+            sourceNode.connect(t.gainNode);
+            
+            // Fires all sound blocks simultaneously on the identical system timestamp
+            sourceNode.start(0, pausedAt);
+            t.activeSource = sourceNode;
+        });
+
+        isPlaying = true;
+        mainBtn.innerText = "Force Reset to Start";
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "Pause";
+    }
+
+    function togglePause() {
+        if (!isPlaying) return;
+
+        if (audioCtx.state === 'running') {
+            audioCtx.suspend();
+            pausedAt = audioCtx.currentTime - startTime;
+            
+            // Loop duration boundary check alignment
+            if (tracks[0] && pausedAt > tracks[0].buffer.duration) {
+                pausedAt = pausedAt % tracks[0].buffer.duration;
+            }
+            pauseBtn.innerText = "Resume";
+        } else if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+            pauseBtn.innerText = "Pause";
+        }
+    }
+
+    function haltAllActiveThreads() {
+        tracks.forEach(t => {
+            if (t.activeSource) {
+                try { t.activeSource.stop(); } catch(e) {}
+                t.activeSource = null;
+            }
         });
     }
 
-    function pauseAll() {
-        tracks.forEach(t => {
-            t.el.pause();
-        });
-    }
+    window.addEventListener('DOMContentLoaded', loadEngineAssets);
 </script>
 
 </body>
