@@ -68,49 +68,43 @@
 
     function initAudioEngine() {
         if (initialized) return;
-
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
         tracks.forEach(t => {
             const source = audioCtx.createMediaElementSource(t.el);
             const gainNode = audioCtx.createGain();
-
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-
-            // Set initial gain to 0.5 (50%)
             gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
-
             t.slider.addEventListener('input', () => {
                 gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
                 t.disp.innerText = Math.round(t.slider.value * 100) + '%';
             });
-
-            t.el.addEventListener('ended', () => {
-                pauseAll();
-            });
+            t.el.addEventListener('ended', () => { pauseAll(); });
         });
-
         initialized = true;
     }
 
     function playAll() {
         initAudioEngine();
+        if (audioCtx && audioCtx.state === 'suspended') { audioCtx.resume(); }
 
-        if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
-
+        // Hard reset sequence to fix sync drift on repeat play
         tracks.forEach(t => {
-            t.el.currentTime = 0;
-            t.el.play().catch(err => console.log("Playback failed: ", err));
+            t.el.pause();           // Force stop
+            t.el.currentTime = 0;   // Reset playhead
+            t.el.load();            // Force reload metadata
         });
+
+        // Trigger playback after short delay to allow reset
+        setTimeout(() => {
+            tracks.forEach(t => {
+                t.el.play().catch(err => console.log("Playback failed: ", err));
+            });
+        }, 50);
     }
 
     function pauseAll() {
-        tracks.forEach(t => {
-            t.el.pause();
-        });
+        tracks.forEach(t => { t.el.pause(); });
     }
 </script>
 
