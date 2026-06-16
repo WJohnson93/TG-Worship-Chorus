@@ -5,57 +5,142 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Thanksgiving Chorus Mixer</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        body { font-family: -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .mixer-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 350px; }
+        h2 { text-align: center; color: #1a1a1a; margin-top: 0; margin-bottom: 25px; }
         .control-group { margin-bottom: 20px; }
-        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; background: #2ecc71; color: white; margin-top: 10px; }
+        .label { display: flex; justify-content: space-between; font-size: 0.85em; font-weight: 600; color: #555; margin-bottom: 8px; }
+        input[type=range] { width: 100%; height: 6px; border-radius: 5px; background: #ddd; appearance: none; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #4a90e2; cursor: pointer; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; background: #2ecc71; color: white; font-size: 16px; margin-top: 10px; transition: 0.2s; }
+        button:disabled { background: #95a5a6; cursor: not-allowed; }
+        .btn-pause { background: #e74c3c; display: none; }
     </style>
 </head>
 <body>
 
 <div class="mixer-card">
     <h2>Chorus Mixer</h2>
-    <div id="controls"></div>
-    <button id="playBtn">Play All</button>
+
+    <div class="control-group">
+        <div class="label"><span>Melody</span><span id="disp0">100%</span></div>
+        <input type="range" id="vol0" min="0" max="1" step="0.01" value="1">
+    </div>
+    <div class="control-group">
+        <div class="label"><span>Harmony 1</span><span id="disp1">100%</span></div>
+        <input type="range" id="vol1" min="0" max="1" step="0.01" value="1">
+    </div>
+    <div class="control-group">
+        <div class="label"><span>Harmony 2</span><span id="disp2">100%</span></div>
+        <input type="range" id="vol2" min="0" max="1" step="0.01" value="1">
+    </div>
+    <div class="control-group">
+        <div class="label"><span>Piano</span><span id="disp3">100%</span></div>
+        <input type="range" id="vol3" min="0" max="1" step="0.01" value="1">
+    </div>
+
+    <button id="playBtn" onclick="initAndPlay()">Load & Play All</button>
+    <button id="pauseBtn" class="btn-pause" onclick="pauseAudio()">Pause</button>
 </div>
 
 <script>
-    const tracks = [
-        { name: 'Melody', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3' },
-        { name: 'Harmony 1', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3' },
-        { name: 'Harmony 2', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3' },
-        { name: 'Piano', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3' }
+    const urls = [
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3'
     ];
 
-    let audioCtx;
-    let audioElements = [];
+    let audioCtx = null;
+    let audioBuffers = [];
+    let activeSources = [];
+    let gainNodes = [];
+    let pausedAt = 0;
+    let isPlaying = false;
 
-    // 1. Create simple HTML audio elements for each track
-    tracks.forEach((track, index) => {
-        const audio = new Audio(track.url);
-        audio.loop = true;
-        audio.preload = "auto";
-        audioElements.push(audio);
+    async function initAndPlay() {
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
 
-        // Add volume slider UI
-        document.getElementById('controls').innerHTML += `
-            <div class="control-group">
-                <label>${track.name}</label><br>
-                <input type="range" min="0" max="1" step="0.01" value="1" 
-                    oninput="audioElements[${index}].volume = this.value">
-            </div>
-        `;
-    });
+        // 1. Create context strictly inside the user click event to bypass mobile security blocks
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // 2. Download and decode audio into memory blocks only once
+        if (audioBuffers.length === 0) {
+            playBtn.innerText = "Downloading Tracks... (Please wait)";
+            playBtn.disabled = true;
 
-    // 2. Play all simultaneously on click
-    document.getElementById('playBtn').addEventListener('click', () => {
-        // This gesture satisfies mobile autoplay security
-        audioElements.forEach(audio => {
-            audio.currentTime = 0;
-            audio.play().catch(e => console.error("Playback failed", e));
+            try {
+                for (let i = 0; i < urls.length; i++) {
+                    const response = await fetch(urls[i]);
+                    const arrayBuffer = await response.arrayBuffer();
+                    
+                    // Decode using older callback method to ensure maximum iOS Safari compatibility
+                    const buffer = await new Promise((resolve, reject) => {
+                        audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+                    });
+                    audioBuffers.push(buffer);
+
+                    // Create volume nodes
+                    const gainNode = audioCtx.createGain();
+                    gainNode.connect(audioCtx.destination);
+                    gainNodes.push(gainNode);
+
+                    // Link sliders
+                    const slider = document.getElementById(`vol${i}`);
+                    const disp = document.getElementById(`disp${i}`);
+                    slider.addEventListener('input', (e) => {
+                        gainNode.gain.value = e.target.value;
+                        disp.innerText = Math.round(e.target.value * 100) + '%';
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to load audio:", err);
+                playBtn.innerText = "Error Loading. Tap to Retry.";
+                playBtn.disabled = false;
+                return;
+            }
+        }
+
+        // 3. Playback Logic
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        // Stop any currently playing overlapping loops
+        activeSources.forEach(source => source.stop());
+        activeSources = [];
+
+        // Schedule all 4 tracks to start at the exact same millisecond hardware timestamp
+        const startTime = audioCtx.currentTime + 0.05; 
+
+        audioBuffers.forEach((buffer, index) => {
+            const source = audioCtx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = true; // Hardware-level looping prevents drift
+            source.connect(gainNodes[index]);
+            source.start(startTime, pausedAt);
+            activeSources.push(source);
         });
-        document.getElementById('playBtn').innerText = "Playing...";
-    });
+
+        isPlaying = true;
+        playBtn.innerText = "Force Resync to Start";
+        playBtn.disabled = false;
+        pauseBtn.style.display = "block";
+        pausedAt = 0; // Reset pause marker if we are resyncing
+    }
+
+    function pauseAudio() {
+        if (audioCtx && audioCtx.state === 'running') {
+            audioCtx.suspend();
+            isPlaying = false;
+            document.getElementById('pauseBtn').style.display = "none";
+            document.getElementById('playBtn').innerText = "Resume Playback";
+        }
+    }
 </script>
+
 </body>
 </html>
