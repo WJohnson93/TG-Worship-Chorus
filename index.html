@@ -49,17 +49,16 @@
 </div>
 
 <div class="hidden-elements">
-    <audio id="audio-melody" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-h1" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-h2" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3" loop crossorigin="anonymous" playsinline></audio>
-    <audio id="audio-piano" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3" loop crossorigin="anonymous" playsinline></audio>
+    <audio id="audio-melody" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3" crossorigin="anonymous" playsinline></audio>
+    <audio id="audio-h1" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3" crossorigin="anonymous" playsinline></audio>
+    <audio id="audio-h2" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3" crossorigin="anonymous" playsinline></audio>
+    <audio id="audio-piano" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3" crossorigin="anonymous" playsinline></audio>
 </div>
 
 <script>
     let audioCtx = null;
     let initialized = false;
 
-    // Structure data models mapped directly to DOM elements
     const tracks = [
         { el: document.getElementById('audio-melody'), slider: document.getElementById('vol-melody'), disp: document.getElementById('v1') },
         { el: document.getElementById('audio-h1'), slider: document.getElementById('vol-h1'), disp: document.getElementById('v2') },
@@ -70,25 +69,25 @@
     function initAudioEngine() {
         if (initialized) return;
 
-        // Establish hardware audio routing clock
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         tracks.forEach(t => {
-            // Hook standard HTML audio objects into Web Audio node pipeline context maps
             const source = audioCtx.createMediaElementSource(t.el);
             const gainNode = audioCtx.createGain();
 
-            // Link node logic maps: Source -> Volume Slider Modifier -> Device Output Speakers
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            // Establish current runtime volumes
             gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
 
-            // Bind individual reactive track controls
             t.slider.addEventListener('input', () => {
                 gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
                 t.disp.innerText = Math.round(t.slider.value * 100) + '%';
+            });
+
+            // If one track ends, pause all others to prevent drift/asynchronicity
+            t.el.addEventListener('ended', () => {
+                pauseAll();
             });
         });
 
@@ -96,17 +95,15 @@
     }
 
     function playAll() {
-        // Build engine immediately upon detecting first valid user physical gesture input tracking event
         initAudioEngine();
 
         if (audioCtx && audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
 
-        // Force snap all underlying hardware playback positions to sync points instantly
         tracks.forEach(t => {
             t.el.currentTime = 0;
-            t.el.play().catch(err => console.log("Mobile engagement required: ", err));
+            t.el.play().catch(err => console.log("Playback failed: ", err));
         });
     }
 
