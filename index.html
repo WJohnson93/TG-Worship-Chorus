@@ -13,23 +13,17 @@
         input[type=range] { width: 100%; height: 6px; border-radius: 5px; background: #ddd; appearance: none; cursor: pointer; }
         input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #4a90e2; cursor: pointer; }
         .master-controls { display: flex; flex-direction: column; gap: 10px; margin-top: 25px; }
-        .master-btns { display: flex; gap: 12px; }
-        button { flex: 1; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 15px; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 15px; margin-bottom: 5px; }
         .btn-play { background: #2ecc71; color: white; }
         .btn-pause { background: #e74c3c; color: white; }
-        .btn-resync { background: #34495e; color: white; }
-        button:hover { opacity: 0.9; }
+        button:disabled { background: #bdc3c7 !important; cursor: not-allowed; color: #7f8c8d; }
+        button:hover:not(:disabled) { opacity: 0.9; }
     </style>
 </head>
 <body>
 
 <div class="mixer-card">
     <h2>Chorus Mixer</h2>
-
-    <audio id="audio-melody" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3" loop></audio>
-    <audio id="audio-h1" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3" loop></audio>
-    <audio id="audio-h2" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3" loop></audio>
-    <audio id="audio-piano" src="https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3" loop></audio>
 
     <div class="control-group">
         <div class="label"><span>Melody</span><span id="v1">100%</span></div>
@@ -49,46 +43,129 @@
     </div>
 
     <div class="master-controls">
-        <div class="master-btns">
-            <button class="btn-play" onclick="playAll()">Play All</button>
-            <button class="btn-pause" onclick="pauseAll()">Pause All</button>
-        </div>
-        <button class="btn-resync" onclick="resyncAll()">Force Resync Tracks</button>
+        <button id="mainBtn" class="btn-play" disabled>Loading Audio Tracks...</button>
+        <button id="pauseBtn" class="btn-pause" onclick="togglePause()" disabled>Pause</button>
     </div>
 </div>
 
 <script>
-    const tracks = [
-        { el: document.getElementById('audio-melody'), vol: document.getElementById('vol-melody'), disp: document.getElementById('v1') },
-        { el: document.getElementById('audio-h1'), vol: document.getElementById('vol-h1'), disp: document.getElementById('v2') },
-        { el: document.getElementById('audio-h2'), vol: document.getElementById('vol-h2'), disp: document.getElementById('v3') },
-        { el: document.getElementById('audio-piano'), vol: document.getElementById('vol-piano'), disp: document.getElementById('v4') }
+    // Configuration details mapped to your GitHub repository files
+    const trackConfigs = [
+        { name: 'melody', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3', slider: 'vol-melody', disp: 'v1' },
+        { name: 'h1', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3', slider: 'vol-h1', disp: 'v2' },
+        { name: 'h2', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3', slider: 'vol-h2', disp: 'v3' },
+        { name: 'piano', url: 'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3', slider: 'vol-piano', disp: 'v4' }
     ];
 
-    tracks.forEach(t => {
-        t.vol.oninput = () => {
-            t.el.volume = t.vol.value;
-            t.disp.innerText = Math.round(t.vol.value * 100) + '%';
-        };
-    });
+    let audioCtx = null;
+    let tracks = [];
+    let isPlaying = false;
+    let startTime = 0;
+    let pausedAt = 0;
 
-    function playAll() {
+    const mainBtn = document.getElementById('mainBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+
+    // Preload audio assets sequentially into operational memory blocks
+    async function loadTracks() {
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            const loadPromises = trackConfigs.map(async (config) => {
+                const response = await fetch(config.url);
+                const arrayBuffer = await response.arrayBuffer();
+                // Safari compatibility layer logic handles buffer layout decoding manually
+                const audioBuffer = await new Promise((resolve, reject) => {
+                    audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+                });
+
+                // Establish continuous automated volume node graphs
+                const gainNode = audioCtx.createGain();
+                gainNode.connect(audioCtx.destination);
+
+                const sliderEl = document.getElementById(config.slider);
+                const dispEl = document.getElementById(config.disp);
+                
+                gainNode.gain.setValueAtTime(sliderEl.value, audioCtx.currentTime);
+
+                sliderEl.oninput = () => {
+                    if (audioCtx) {
+                        gainNode.gain.setValueAtTime(sliderEl.value, audioCtx.currentTime);
+                    }
+                    dispEl.innerText = Math.round(sliderEl.value * 100) + '%';
+                };
+
+                return { buffer: audioBuffer, gainNode: gainNode, sources: [] };
+            });
+
+            tracks = await Promise.all(loadPromises);
+            
+            // Unlock UI interactive capabilities once components finish loading
+            mainBtn.innerText = "Sync & Play All";
+            mainBtn.disabled = false;
+            mainBtn.onclick = startPlayback;
+        } catch (e) {
+            mainBtn.innerText = "Error Loading Audio";
+            console.error(e);
+        }
+    }
+
+    function startPlayback() {
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        // Clean out stale threads prior to starting synchronization execution
+        stopAllSources();
+
+        // Establish the timeline clock offset alignment pointer
+        startTime = audioCtx.currentTime - pausedAt;
+
         tracks.forEach(t => {
-            t.el.play();
+            const source = audioCtx.createBufferSource();
+            source.buffer = t.buffer;
+            source.loop = true;
+            source.connect(t.gainNode);
+            
+            // Millisecond perfect start scheduling using Web Audio API hardware clock
+            source.start(0, pausedAt);
+            t.sources.push(source);
+        });
+
+        isPlaying = true;
+        mainBtn.innerText = "Restart & Resync";
+        pauseBtn.disabled = false;
+        pauseBtn.innerText = "Pause";
+    }
+
+    function togglePause() {
+        if (!isPlaying) return;
+
+        if (audioCtx.state === 'running') {
+            audioCtx.suspend();
+            pausedAt = audioCtx.currentTime - startTime;
+            // Catch loops longer than current buffer limit range limits
+            if(tracks[0] && pausedAt > tracks[0].buffer.duration) {
+                pausedAt = pausedAt % tracks[0].buffer.duration;
+            }
+            pauseBtn.innerText = "Resume";
+        } else if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+            pauseBtn.innerText = "Pause";
+        }
+    }
+
+    function stopAllSources() {
+        tracks.forEach(t => {
+            t.sources.forEach(source => {
+                try { source.stop(); } catch(e){}
+            });
+            t.sources = [];
         });
     }
 
-    function pauseAll() {
-        tracks.forEach(t => t.el.pause());
-    }
-
-    function resyncAll() {
-        // Snaps all playing tracks back to the exact same starting point if they drift
-        const targetTime = tracks[0].el.currentTime;
-        tracks.forEach(t => {
-            t.el.currentTime = targetTime;
-        });
-    }
+    // Call load function automatically on page boot layout creation
+    window.addEventListener('DOMContentLoaded', loadTracks);
 </script>
 
 </body>
