@@ -66,21 +66,16 @@
     const mainBtn = document.getElementById('mainBtn');
     const pauseBtn = document.getElementById('pauseBtn');
 
-    // Bypasses CORS constraints on mobile by downloading assets via alternative channel gateways
-    async function fetchAudioBlobData(url) {
-        // Appending a standard proxy gateway allows mobile scripts to ingest cross-origin assets securely
-        const bypassUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
-        const response = await fetch(bypassUrl);
-        if (!response.ok) throw new Error('Network failure');
-        return await response.arrayBuffer();
-    }
-
     async function loadEngineAssets() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         for (let config of trackConfigs) {
             try {
-                const arrayBuffer = await fetchAudioBlobData(config.url);
+                // Direct request to GitHub Pages passing CORS configuration flags natively
+                const response = await fetch(config.url, { method: 'GET', mode: 'cors' });
+                if (!response.ok) throw new Error('Network file fetch failure');
+                
+                const arrayBuffer = await response.arrayBuffer();
                 
                 // Decode array layout parameters seamlessly matching system sound profiles
                 const audioBuffer = await new Promise((resolve, reject) => {
