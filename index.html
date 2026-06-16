@@ -26,20 +26,20 @@
     <h2>Chorus Mixer</h2>
 
     <div class="control-group">
-        <div class="label"><span>Melody</span><span id="v1">100%</span></div>
-        <input type="range" id="vol-melody" min="0" max="1" step="0.01" value="1">
+        <div class="label"><span>Melody</span><span id="v1">50%</span></div>
+        <input type="range" id="vol-melody" min="0" max="1" step="0.01" value="0.5">
     </div>
     <div class="control-group">
-        <div class="label"><span>Harmony 1</span><span id="v2">100%</span></div>
-        <input type="range" id="vol-h1" min="0" max="1" step="0.01" value="1">
+        <div class="label"><span>Harmony 1</span><span id="v2">50%</span></div>
+        <input type="range" id="vol-h1" min="0" max="1" step="0.01" value="0.5">
     </div>
     <div class="control-group">
-        <div class="label"><span>Harmony 2</span><span id="v3">100%</span></div>
-        <input type="range" id="vol-h2" min="0" max="1" step="0.01" value="1">
+        <div class="label"><span>Harmony 2</span><span id="v3">50%</span></div>
+        <input type="range" id="vol-h2" min="0" max="1" step="0.01" value="0.5">
     </div>
     <div class="control-group">
-        <div class="label"><span>Piano</span><span id="v4">100%</span></div>
-        <input type="range" id="vol-piano" min="0" max="1" step="0.01" value="1">
+        <div class="label"><span>Piano</span><span id="v4">50%</span></div>
+        <input type="range" id="vol-piano" min="0" max="1" step="0.01" value="0.5">
     </div>
 
     <div class="master-controls">
@@ -78,6 +78,7 @@
             source.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
+            // Set initial gain to 0.5 (50%)
             gainNode.gain.setValueAtTime(t.slider.value, audioCtx.currentTime);
 
             t.slider.addEventListener('input', () => {
@@ -85,7 +86,6 @@
                 t.disp.innerText = Math.round(t.slider.value * 100) + '%';
             });
 
-            // If one track ends, pause all others to prevent drift/asynchronicity
             t.el.addEventListener('ended', () => {
                 pauseAll();
             });
