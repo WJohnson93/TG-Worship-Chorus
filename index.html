@@ -1,111 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Worship Chorus Mixer</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; background: #f4f4f9; }
-        .track { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .controls { margin-top: 20px; padding: 15px; background: #333; color: white; border-radius: 8px; text-align: center; }
-        input[type=range] { width: 100%; cursor: pointer; margin-top: 10px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-    </style>
-</head>
-<body>
+<script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const urls = [
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3',
+        'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3'
+    ];
 
-    <h2>Worship Chorus Mixer</h2>
-    <div id="status">Loading audio files...</div>
+    let buffers = [];
+    let sources = [];
+    let gainNodes = [];
+    let isPlaying = false;
+    let startTime = 0;
+    let pausedAt = 0;
 
-    <div id="tracks">
-        <div class="track">Melody <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(0, this.value)"></div>
-        <div class="track">Harmony 1 <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(1, this.value)"></div>
-        <div class="track">Harmony 2 <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(2, this.value)"></div>
-        <div class="track">Piano <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(3, this.value)"></div>
-    </div>
+    async function init() {
+        document.getElementById('status').innerText = "Downloading files...";
+        try {
+            const buffersData = await Promise.all(urls.map(async (url) => {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const arrayBuffer = await response.arrayBuffer();
+                return await audioCtx.decodeAudioData(arrayBuffer);
+            }));
+            buffers = buffersData;
+            document.getElementById('status').innerText = "Ready! Click Play.";
+            document.getElementById('playBtn').disabled = false;
+        } catch (e) {
+            console.error("Error loading audio:", e);
+            document.getElementById('status').innerText = "Error: " + e.message;
+        }
+    }
 
-    <div class="controls">
-        <button id="playBtn" disabled onclick="togglePlay()">Play</button>
-        <input type="range" id="masterScrubber" min="0" max="100" value="0" oninput="scrub(this.value)">
-    </div>
-
-    <script>
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const urls = [
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3'
-        ];
-
-        let buffers = [];
-        let sources = [];
-        let gainNodes = [];
-        let isPlaying = false;
-        let startTime = 0; // When the audio started
-        let pausedAt = 0;  // How far into the track we were when paused
-
-        async function init() {
-            try {
-                const buffersData = await Promise.all(urls.map(async (url) => {
-                    const response = await fetch(url);
-                    const arrayBuffer = await response.arrayBuffer();
-                    return await audioCtx.decodeAudioData(arrayBuffer);
-                }));
-                buffers = buffersData;
-                document.getElementById('status').innerText = "Ready!";
-                document.getElementById('playBtn').disabled = false;
-            } catch (e) {
-                document.getElementById('status').innerText = "Error loading files.";
-            }
+    async function togglePlay() {
+        // ALWAYS resume context on user interaction
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
         }
 
-        function setVolume(i, val) { if (gainNodes[i]) gainNodes[i].gain.value = val; }
-
-        function togglePlay() {
-            if (isPlaying) {
-                // Pause
-                pausedAt = audioCtx.currentTime - startTime;
-                sources.forEach(s => s.stop());
-                sources = [];
-                isPlaying = false;
-                document.getElementById('playBtn').innerText = "Play";
-            } else {
-                // Play
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-                startTime = audioCtx.currentTime - pausedAt;
+        if (isPlaying) {
+            pausedAt = audioCtx.currentTime - startTime;
+            sources.forEach(s => s.stop());
+            sources = [];
+            isPlaying = false;
+            document.getElementById('playBtn').innerText = "Play";
+        } else {
+            startTime = audioCtx.currentTime - pausedAt;
+            buffers.forEach((buffer, i) => {
+                const source = audioCtx.createBufferSource();
+                const gainNode = audioCtx.createGain();
+                source.buffer = buffer;
+                source.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
                 
-                buffers.forEach((buffer, i) => {
-                    const source = audioCtx.createBufferSource();
-                    const gainNode = audioCtx.createGain();
-                    source.buffer = buffer;
-                    source.connect(gainNode);
-                    gainNode.connect(audioCtx.destination);
-                    gainNode.gain.value = document.getElementsByTagName('input')[i].value;
-                    
-                    source.start(0, pausedAt);
-                    sources.push(source);
-                    gainNodes.push(gainNode);
-                });
-                isPlaying = true;
-                document.getElementById('playBtn').innerText = "Pause";
-            }
+                // Get volume from the specific slider
+                const slider = document.querySelectorAll('input[type=range]')[i];
+                gainNode.gain.value = slider.value;
+                
+                source.start(0, pausedAt);
+                sources.push(source);
+                gainNodes.push(gainNode);
+            });
+            isPlaying = true;
+            document.getElementById('playBtn').innerText = "Pause";
         }
+    }
 
-        function scrub(val) {
-            const wasPlaying = isPlaying;
-            if (isPlaying) togglePlay(); // Stop
-            pausedAt = (val / 100) * buffers[0].duration;
-            if (wasPlaying) togglePlay(); // Restart from new position
-        }
-
-        setInterval(() => {
-            if (isPlaying && buffers[0]) {
-                const progress = ((audioCtx.currentTime - startTime) / buffers[0].duration) * 100;
-                document.getElementById('masterScrubber').value = progress;
-            }
-        }, 100);
-
-        init();
-    </script>
-</body>
-</html>
+    // Initialize
+    init();
+</script>
