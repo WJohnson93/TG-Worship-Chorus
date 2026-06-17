@@ -1,4 +1,5 @@
 <script>
+    // Initialize context
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const urls = [
         'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
@@ -32,19 +33,21 @@
         }
     }
 
-    async function togglePlay() {
-        // ALWAYS resume context on user interaction
+    function togglePlay() {
+        // SYNCHRONOUS resume for strict mobile browsers
         if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
+            audioCtx.resume();
         }
 
         if (isPlaying) {
+            // Pause
             pausedAt = audioCtx.currentTime - startTime;
             sources.forEach(s => s.stop());
             sources = [];
             isPlaying = false;
             document.getElementById('playBtn').innerText = "Play";
         } else {
+            // Play
             startTime = audioCtx.currentTime - pausedAt;
             buffers.forEach((buffer, i) => {
                 const source = audioCtx.createBufferSource();
