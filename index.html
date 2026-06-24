@@ -1,111 +1,278 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Thanksgiving Chorus</title>
-    <style>
-        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; background: #f4f4f9; }
-        .track { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .controls { margin-top: 20px; padding: 15px; background: #333; color: white; border-radius: 8px; text-align: center; }
-        input[type=range] { width: 100%; cursor: pointer; margin-top: 10px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TG Worship Chorus Mixer</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #121212;
+      color: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .mixer-container {
+      background: #1e1e1e;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      width: 100%;
+      max-width: 600px;
+    }
+    h1 { text-align: center; color: #fff; margin-bottom: 25px; font-size: 1.5rem; }
+    
+    /* Master Controls */
+    .master-controls { display: flex; flex-direction: column; gap: 15px; margin-bottom: 30px; }
+    .main-btn {
+      background: #6200ee; color: white; border: none; padding: 14px;
+      border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s;
+    }
+    .main-btn:hover { background: #3700b3; }
+    .main-btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+    input[type="range"] { width: 100%; accent-color: #6200ee; cursor: pointer; }
+    
+    /* Mixer Channels */
+    .faders-grid { display: flex; flex-direction: column; gap: 16px; }
+    .fader-row { 
+      display: flex; 
+      align-items: center; 
+      background: #252525;
+      padding: 12px 16px;
+      border-radius: 8px;
+      gap: 15px; 
+    }
+    .fader-label { width: 90px; font-weight: bold; font-size: 0.9rem; color: #fff; }
+    .fader-input { flex-grow: 1; }
+    
+    /* Mute / Solo Buttons */
+    .control-btn {
+      border: 1px solid #444;
+      background: #333;
+      color: #aaa;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.1s ease;
+      width: 50px;
+      text-align: center;
+    }
+    .control-btn:hover { background: #444; color: #fff; }
+    
+    /* Active Toggle States */
+    .control-btn.muted.active {
+      background: #d32f2f;
+      color: white;
+      border-color: #d32f2f;
+    }
+    .control-btn.soloed.active {
+      background: #f57c00;
+      color: white;
+      border-color: #f57c00;
+    }
+    
+    .status-text { text-align: center; color: #888; font-size: 0.85rem; margin-top: 20px; }
+  </style>
 </head>
 <body>
 
-    <h2>Worship Chorus Mixer</h2>
-    <div id="status">Loading audio files...</div>
-
-    <div id="tracks">
-        <div class="track">Melody <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(0, this.value)"></div>
-        <div class="track">Harmony 1 <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(1, this.value)"></div>
-        <div class="track">Harmony 2 <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(2, this.value)"></div>
-        <div class="track">Piano <input type="range" min="0" max="1" step="0.01" value="1" oninput="setVolume(3, this.value)"></div>
+<div class="mixer-container">
+  <h1>TG Worship Chorus Mixer</h1>
+  
+  <div class="master-controls">
+    <button id="playPauseBtn" class="main-btn" disabled>Loading Tracks...</button>
+    <div>
+      <label style="font-size: 0.85rem; color: #aaa; display: block; margin-bottom: 5px;">Song Progress</label>
+      <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1">
     </div>
+  </div>
 
-    <div class="controls">
-        <button id="playBtn" disabled onclick="togglePlay()">Play</button>
-        <input type="range" id="masterScrubber" min="0" max="100" value="0" oninput="scrub(this.value)">
+  <div class="faders-grid">
+    <div class="fader-row" data-track="0">
+      <span class="fader-label">Melody</span>
+      <input type="range" class="vol-fader" min="0" max="1" step="0.01" value="0.8">
+      <button class="control-btn muted">MUTE</button>
+      <button class="control-btn soloed">SOLO</button>
     </div>
+    <div class="fader-row" data-track="1">
+      <span class="fader-label">Harmony 1</span>
+      <input type="range" class="vol-fader" min="0" max="1" step="0.01" value="0.8">
+      <button class="control-btn muted">MUTE</button>
+      <button class="control-btn soloed">SOLO</button>
+    </div>
+    <div class="fader-row" data-track="2">
+      <span class="fader-label">Harmony 2</span>
+      <input type="range" class="vol-fader" min="0" max="1" step="0.01" value="0.8">
+      <button class="control-btn muted">MUTE</button>
+      <button class="control-btn soloed">SOLO</button>
+    </div>
+    <div class="fader-row" data-track="3">
+      <span class="fader-label">Piano</span>
+      <input type="range" class="vol-fader" min="0" max="1" step="0.01" value="0.8">
+      <button class="control-btn muted">MUTE</button>
+      <button class="control-btn soloed">SOLO</button>
+    </div>
+  </div>
+  
+  <div id="status" class="status-text">Fetching audio stems...</div>
+</div>
 
-    <script>
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const urls = [
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3',
-            'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3'
-        ];
+<script>
+// Tracks matching your exact GitHub files
+const trackUrls = ['TGMelody.mp3', 'TGH1.mp3', 'TGH2.mp3', 'TGPiano.mp3'];
 
-        let buffers = [];
-        let sources = [];
-        let gainNodes = [];
-        let isPlaying = false;
-        let startTime = 0; // When the audio started
-        let pausedAt = 0;  // How far into the track we were when paused
+let audioCtx;
+let buffers = [];
+let sources = [];
+let gainNodes = [];
 
-        async function init() {
-            try {
-                const buffersData = await Promise.all(urls.map(async (url) => {
-                    const response = await fetch(url);
-                    const arrayBuffer = await response.arrayBuffer();
-                    return await audioCtx.decodeAudioData(arrayBuffer);
-                }));
-                buffers = buffersData;
-                document.getElementById('status').innerText = "Ready!";
-                document.getElementById('playBtn').disabled = false;
-            } catch (e) {
-                document.getElementById('status').innerText = "Error loading files.";
-            }
-        }
+// Track states tracking volumes, mutes, and solos
+let trackStates = [
+  { volume: 0.8, isMuted: false, isSoloed: false },
+  { volume: 0.8, isMuted: false, isSoloed: false },
+  { volume: 0.8, isMuted: false, isSoloed: false },
+  { volume: 0.8, isMuted: false, isSoloed: false }
+];
 
-        function setVolume(i, val) { if (gainNodes[i]) gainNodes[i].gain.value = val; }
+let isPlaying = false;
+let startTime = 0;
+let pauseTime = 0;
+let animationFrameId;
 
-        function togglePlay() {
-            if (isPlaying) {
-                // Pause
-                pausedAt = audioCtx.currentTime - startTime;
-                sources.forEach(s => s.stop());
-                sources = [];
-                isPlaying = false;
-                document.getElementById('playBtn').innerText = "Play";
-            } else {
-                // Play
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-                startTime = audioCtx.currentTime - pausedAt;
-                
-                buffers.forEach((buffer, i) => {
-                    const source = audioCtx.createBufferSource();
-                    const gainNode = audioCtx.createGain();
-                    source.buffer = buffer;
-                    source.connect(gainNode);
-                    gainNode.connect(audioCtx.destination);
-                    gainNode.gain.value = document.getElementsByTagName('input')[i].value;
-                    
-                    source.start(0, pausedAt);
-                    sources.push(source);
-                    gainNodes.push(gainNode);
-                });
-                isPlaying = true;
-                document.getElementById('playBtn').innerText = "Pause";
-            }
-        }
+const playPauseBtn = document.getElementById('playPauseBtn');
+const progressBar = document.getElementById('progressBar');
+const statusText = document.getElementById('status');
 
-        function scrub(val) {
-            const wasPlaying = isPlaying;
-            if (isPlaying) togglePlay(); // Stop
-            pausedAt = (val / 100) * buffers[0].duration;
-            if (wasPlaying) togglePlay(); // Restart from new position
-        }
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    trackStates.forEach((state, index) => {
+      const gainNode = audioCtx.createGain();
+      gainNode.connect(audioCtx.destination);
+      gainNodes.push(gainNode);
+    });
+    updateVolumes();
+  }
+}
 
-        setInterval(() => {
-            if (isPlaying && buffers[0]) {
-                const progress = ((audioCtx.currentTime - startTime) / buffers[0].duration) * 100;
-                document.getElementById('masterScrubber').value = progress;
-            }
-        }, 100);
+// Master volume logic calculation for Mute/Solo functionality
+function updateVolumes() {
+  if (!audioCtx) return;
+  
+  const anyTrackSoloed = trackStates.some(t => t.isSoloed);
+  
+  trackStates.forEach((state, index) => {
+    let targetGain = state.volume;
+    
+    if (anyTrackSoloed) {
+      // If anything is soloed, force non-soloed tracks to 0 volume
+      if (!state.isSoloed) targetGain = 0;
+    } 
+    
+    // If explicitly muted, override to 0 volume
+    if (state.isMuted) {
+      targetGain = 0;
+    }
+    
+    // Smoothly transition volume to avoid digital pops/clicks
+    gainNodes[index].gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.01);
+  });
+}
 
-        init();
-    </script>
-</body>
-</html>
+async function loadAudio() {
+  try {
+    for (let url of trackUrls) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Failed to load ${url}`);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+      buffers.push(audioBuffer);
+    }
+    
+    playPauseBtn.disabled = false;
+    playPauseBtn.textContent = 'Play';
+    statusText.textContent = 'All tracks loaded and ready!';
+  } catch (error) {
+    console.error(error);
+    statusText.textContent = 'Error loading tracks. Double check file naming.';
+  }
+}
+
+function playAudio(offset = 0) {
+  initAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  
+  sources = [];
+  
+  buffers.forEach((buffer, index) => {
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gainNodes[index]);
+    source.start(0, offset);
+    sources.push(source);
+  });
+  
+  startTime = audioCtx.currentTime - offset;
+  isPlaying = true;
+  playPauseBtn.textContent = 'Pause';
+  animateProgressBar();
+}
+
+function stopAudio() {
+  sources.forEach(source => { try { source.stop(); } catch(e){} });
+  cancelAnimationFrame(animationFrameId);
+  pauseTime = audioCtx.currentTime - startTime;
+  isPlaying = false;
+  playPauseBtn.textContent = 'Play';
+}
+
+function animateProgressBar() {
+  if (!isPlaying) return;
+  
+  const currentTime = audioCtx.currentTime - startTime;
+  const duration = buffers[0].duration;
+  
+  if (currentTime >= duration) {
+    isPlaying = false;
+    pauseTime = 0;
+    progressBar.value = 0;
+    playPauseBtn.textContent = 'Play';
+    return;
+  }
+  
+  progressBar.value = (currentTime / duration) * 100;
+  animationFrameId = requestAnimationFrame(animateProgressBar);
+}
+
+// UI Event Listeners
+playPauseBtn.addEventListener('click', () => {
+  if (isPlaying) {
+    stopAudio();
+  } else {
+    playAudio(pauseTime);
+  }
+});
+
+// Capture mixer channel adjustments dynamically
+document.querySelectorAll('.fader-row').forEach(row => {
+  const trackIndex = parseInt(row.getAttribute('data-track'));
+  const fader = row.querySelector('.vol-fader');
+  const muteBtn = row.querySelector('.muted');
+  const soloBtn = row.querySelector('.soloed');
+  
+  fader.addEventListener('input', (e) => {
+    trackStates[trackIndex].volume = parseFloat(e.target.value);
+    updateVolumes();
+  });
+  
+  muteBtn.addEventListener('click', () => {
+    trackStates[trackIndex].isMuted = !trackStates[trackIndex].isMuted;
+    muteBtn.classList.toggle
