@@ -187,16 +187,26 @@ function updateVolumes() {
 
 async function loadAudio() {
   try {
-    for (let url of trackUrls) {
+    statusText.textContent = 'Downloading all tracks simultaneously...';
+    
+    // 1. Trigger all 4 downloads at the exact same time
+    const downloadPromises = trackUrls.map(async (url) => {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`Failed to load ${url}`);
-      const arrayBuffer = await response.arrayBuffer();
-      
-      const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
-      buffers.push(audioBuffer);
-    }
+      return response.arrayBuffer();
+    });
     
+    // Wait for all downloads to finish together
+    const arrayBuffers = await Promise.all(downloadPromises);
+    
+    statusText.textContent = 'Processing audio data...';
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // 2. Decode all audio files in parallel to save CPU time
+    const decodePromises = arrayBuffers.map(buffer => tempCtx.decodeAudioData(buffer));
+    buffers = await Promise.all(decodePromises);
+    
+    // 3. Unlock the mixer
     playPauseBtn.disabled = false;
     playPauseBtn.textContent = 'Play';
     statusText.textContent = 'All tracks loaded and ready!';
