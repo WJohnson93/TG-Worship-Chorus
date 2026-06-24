@@ -161,13 +161,12 @@ const playPauseBtn = document.getElementById('playPauseBtn');
 const progressBar = document.getElementById('progressBar');
 const statusText = document.getElementById('status');
 
-// Reconstructed configuration checker to ensure fader lines are active
+// Crucial: Create the Context and the Faders inside an explicit click interaction loop
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
   
-  // If faders haven't been mapped to Web Audio nodes yet, map them now
   if (gainNodes.length === 0) {
     trackStates.forEach((state, index) => {
       const gainNode = audioCtx.createGain();
@@ -195,8 +194,8 @@ async function loadAudio() {
   try {
     statusText.textContent = 'Downloading stems from GitHub in parallel...';
     
-    // Setup AudioContext early so it handles processing requests
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // We use a temporary context strictly for background decoding to prevent early suspension trap
+    const decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
 
     const downloadAndDecodePromises = trackUrls.map(async (url) => {
       const fileName = url.split('/').pop();
@@ -207,7 +206,7 @@ async function loadAudio() {
         }
         const arrayBuffer = await response.arrayBuffer();
         statusText.textContent = `Decoding ${fileName}...`;
-        return await audioCtx.decodeAudioData(arrayBuffer);
+        return await decodeCtx.decodeAudioData(arrayBuffer);
       } catch (fileError) {
         throw new Error(`[${fileName}] -> ${fileError.message}`);
       }
@@ -215,8 +214,8 @@ async function loadAudio() {
     
     buffers = await Promise.all(downloadAndDecodePromises);
     
-    // Essential: Map audio fader lines immediately post-download
-    initAudio();
+    // Cleanup background decode engine
+    decodeCtx.close();
     
     playPauseBtn.disabled = false;
     playPauseBtn.textContent = 'Play';
@@ -229,12 +228,13 @@ async function loadAudio() {
   }
 }
 
-function playAudio(offset = 0) {
+async function playAudio(offset = 0) {
+  // Triggers user-gesture context activation instantly bypassing browser blockades
   initAudio();
-  // Browser safety gesture trigger
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume();
+  }
   
-  // Clear any existing track play instances safely
   sources = [];
   
   buffers.forEach((buffer, index) => {
@@ -277,7 +277,7 @@ function animateProgressBar() {
   animationFrameId = requestAnimationFrame(animateProgressBar);
 }
 
-// UI Setup Hooks
+// User-Gesture UI Wireframing hooks
 playPauseBtn.addEventListener('click', () => {
   if (isPlaying) {
     stopAudio();
@@ -298,12 +298,15 @@ document.querySelectorAll('.fader-row').forEach(row => {
   });
   
   muteBtn.addEventListener('click', () => {
+    // Ensure nodes exist if they manipulate toggles pre-playback
+    initAudio();
     trackStates[trackIndex].isMuted = !trackStates[trackIndex].isMuted;
     muteBtn.classList.toggle('active');
     updateVolumes();
   });
   
   soloBtn.addEventListener('click', () => {
+    initAudio();
     trackStates[trackIndex].isSoloed = !trackStates[trackIndex].isSoloed;
     soloBtn.classList.toggle('active');
     updateVolumes();
