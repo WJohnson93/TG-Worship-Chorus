@@ -76,7 +76,16 @@
       border-color: #f57c00;
     }
     
-    .status-text { text-align: center; color: #888; font-size: 0.85rem; margin-top: 20px; }
+    .status-text { 
+      text-align: center; 
+      color: #aaa; 
+      font-size: 0.9rem; 
+      margin-top: 20px; 
+      padding: 10px;
+      background: #151515;
+      border-radius: 6px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -85,7 +94,7 @@
   <h1>TG Worship Chorus Mixer</h1>
   
   <div class="master-controls">
-    <button id="playPauseBtn" class="main-btn" disabled>Loading Tracks...</button>
+    <button id="playPauseBtn" class="main-btn" disabled>Loading Audio Stems...</button>
     <div>
       <label style="font-size: 0.85rem; color: #aaa; display: block; margin-bottom: 5px;">Song Progress</label>
       <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1">
@@ -119,19 +128,23 @@
     </div>
   </div>
   
-  <div id="status" class="status-text">Fetching audio stems...</div>
+  <div id="status" class="status-text">Connecting to GitHub audio storage...</div>
 </div>
 
 <script>
-// Tracks matching your exact GitHub files
-const trackUrls = ['TGMelody.mp3', 'TGH1.mp3', 'TGH2.mp3', 'TGPiano.mp3'];
+// Using your exact live absolute URLs to prevent path errors
+const trackUrls = [
+  'https://wjohnson93.github.io/TG-Worship-Chorus/TGMelody.mp3',
+  'https://wjohnson93.github.io/TG-Worship-Chorus/TGH1.mp3',
+  'https://wjohnson93.github.io/TG-Worship-Chorus/TGH2.mp3',
+  'https://wjohnson93.github.io/TG-Worship-Chorus/TGPiano.mp3'
+];
 
 let audioCtx;
 let buffers = [];
 let sources = [];
 let gainNodes = [];
 
-// Track states tracking volumes, mutes, and solos
 let trackStates = [
   { volume: 0.8, isMuted: false, isSoloed: false },
   { volume: 0.8, isMuted: false, isSoloed: false },
@@ -148,6 +161,7 @@ const playPauseBtn = document.getElementById('playPauseBtn');
 const progressBar = document.getElementById('progressBar');
 const statusText = document.getElementById('status');
 
+// Initialize main AudioContext
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -161,58 +175,54 @@ function initAudio() {
   }
 }
 
-// Master volume logic calculation for Mute/Solo functionality
 function updateVolumes() {
   if (!audioCtx) return;
-  
   const anyTrackSoloed = trackStates.some(t => t.isSoloed);
   
   trackStates.forEach((state, index) => {
     let targetGain = state.volume;
+    if (anyTrackSoloed && !state.isSoloed) targetGain = 0;
+    if (state.isMuted) targetGain = 0;
     
-    if (anyTrackSoloed) {
-      // If anything is soloed, force non-soloed tracks to 0 volume
-      if (!state.isSoloed) targetGain = 0;
-    } 
-    
-    // If explicitly muted, override to 0 volume
-    if (state.isMuted) {
-      targetGain = 0;
-    }
-    
-    // Smoothly transition volume to avoid digital pops/clicks
     gainNodes[index].gain.setTargetAtTime(targetGain, audioCtx.currentTime, 0.01);
   });
 }
 
 async function loadAudio() {
   try {
-    statusText.textContent = 'Downloading all tracks simultaneously...';
+    statusText.textContent = 'Downloading stems from GitHub in parallel...';
     
-    const downloadPromises = trackUrls.map(async (url) => {
-      const response = await fetch(url);
-      // This will catch 404 errors (wrong file name or path)
-      if (!response.ok) {
-        throw new Error(`Could not find "${url}". Check spelling/capitalization.`);
+    // Initialize audio context early so it's ready to decode
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // Map out downloads with hyper-specific error catching per file
+    const downloadAndDecodePromises = trackUrls.map(async (url) => {
+      const fileName = url.split('/').pop();
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Server responded with status ${response.status} (Not Found)`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        statusText.textContent = `Decoding ${fileName}...`;
+        return await audioCtx.decodeAudioData(arrayBuffer);
+      } catch (fileError) {
+        // Pass the exact filename up to the main catch block
+        throw new Error(`[${fileName}] -> ${fileError.message}`);
       }
-      return response.arrayBuffer();
     });
     
-    const arrayBuffers = await Promise.all(downloadPromises);
-    
-    statusText.textContent = 'Processing audio data...';
-    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
-    
-    const decodePromises = arrayBuffers.map(buffer => tempCtx.decodeAudioData(buffer));
-    buffers = await Promise.all(decodePromises);
+    // Process all files at the exact same time
+    buffers = await Promise.all(downloadAndDecodePromises);
     
     playPauseBtn.disabled = false;
     playPauseBtn.textContent = 'Play';
-    statusText.textContent = 'All tracks loaded and ready!';
+    statusText.style.color = '#4caf50';
+    statusText.textContent = '★ All tracks loaded successfully and synced! ★';
   } catch (error) {
-    console.error("Audio Load Error:", error);
-    // This prints the exact error in red on the webpage
-    statusText.innerHTML = `<span style="color: #ff5252; font-weight: bold;">Error: ${error.message} <br> (If testing locally, upload to GitHub to fix CORS block)</span>`;
+    console.error(error);
+    statusText.style.color = '#ff5252';
+    statusText.innerHTML = `<strong>Mixer Error:</strong><br>${error.message}<br><br><span style="font-size:0.8rem; color:#aaa;">Tip: Check if the file names on GitHub match spelling and Capitalization perfectly (e.g. .mp3 vs .MP3).</span>`;
   }
 }
 
@@ -271,7 +281,6 @@ playPauseBtn.addEventListener('click', () => {
   }
 });
 
-// Capture mixer channel adjustments dynamically
 document.querySelectorAll('.fader-row').forEach(row => {
   const trackIndex = parseInt(row.getAttribute('data-track'));
   const fader = row.querySelector('.vol-fader');
@@ -285,4 +294,33 @@ document.querySelectorAll('.fader-row').forEach(row => {
   
   muteBtn.addEventListener('click', () => {
     trackStates[trackIndex].isMuted = !trackStates[trackIndex].isMuted;
-    muteBtn.classList.toggle
+    muteBtn.classList.toggle('active');
+    updateVolumes();
+  });
+  
+  soloBtn.addEventListener('click', () => {
+    trackStates[trackIndex].isSoloed = !trackStates[trackIndex].isSoloed;
+    soloBtn.classList.toggle('active');
+    updateVolumes();
+  });
+});
+
+progressBar.addEventListener('input', (e) => {
+  if (buffers.length === 0) return;
+  const duration = buffers[0].duration;
+  const seekTo = (e.target.value / 100) * duration;
+  
+  if (isPlaying) {
+    stopAudio();
+    playAudio(seekTo);
+  } else {
+    pauseTime = seekTo;
+  }
+});
+
+// Automatically invoke on page access
+loadAudio();
+</script>
+
+</body>
+</html>
